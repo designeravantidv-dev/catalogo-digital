@@ -36,14 +36,15 @@ button:disabled { opacity:.4; cursor:default; }
 <script>
 (function () {
   'use strict';
-  // ALTERE APENAS A QUANTIDADE E OS NOMES, SE NECESSÁRIO.
-  const TOTAL_PAGINAS = 20;
+  // Os arquivos exportados pelo InDesign usam quatro digitos.
+  // Arquivos ausentes (como 0018 e 0019) serao ignorados.
+  const TOTAL_PAGINAS_POSSIVEIS = 20;
   const PREFIXO = 'paginas/pagina-';
   const EXTENSAO = '.jpg';
-  const imagens = Array.from({length: TOTAL_PAGINAS}, (_, i) =>
-    PREFIXO + String(i + 1).padStart(2, '0') + EXTENSAO
+  const candidatos = Array.from({length: TOTAL_PAGINAS_POSSIVEIS}, (_, i) =>
+    PREFIXO + String(i + 1).padStart(4, '0') + EXTENSAO
   );
-
+  let imagens = [];
   const stage = document.getElementById('stage');
   const catalogo = document.getElementById('catalogo');
   const viewer = document.getElementById('viewer');
@@ -59,9 +60,9 @@ button:disabled { opacity:.4; cursor:default; }
   function atualizarControles() {
     if (!livro) return;
     paginaAtual = livro.getCurrentPageIndex();
-    contador.textContent = (paginaAtual + 1) + ' / ' + TOTAL_PAGINAS;
+    contador.textContent = (paginaAtual + 1) + ' / ' + imagens.length;
     anterior.disabled = paginaAtual === 0;
-    proxima.disabled = paginaAtual >= TOTAL_PAGINAS - 1;
+    proxima.disabled = paginaAtual >= imagens.length - 1;
   }
 
   function criarLivro() {
@@ -133,7 +134,24 @@ button:disabled { opacity:.4; cursor:default; }
     clearTimeout(layoutTimer);
     layoutTimer = setTimeout(ajustarTamanho, 150);
   });
-  criarLivro();
+  function imagemExiste(url) {
+    return new Promise(function(resolve) {
+      const img = new Image();
+      img.onload = function() { resolve(true); };
+      img.onerror = function() { resolve(false); };
+      img.src = url;
+    });
+  }
+
+  Promise.all(candidatos.map(imagemExiste)).then(function(resultados) {
+    imagens = candidatos.filter(function(_, i) { return resultados[i]; });
+    if (!imagens.length) {
+      mensagem.textContent = 'Nenhuma imagem encontrada. Confira a pasta paginas e os nomes pagina-0001.jpg, pagina-0002.jpg...';
+      contador.textContent = '0 páginas';
+      return;
+    }
+    criarLivro();
+  });
 })();
 </script>
 </body>
