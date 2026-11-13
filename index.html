@@ -1,159 +1,120 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Catálogo Digital</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Catálogo Digital Avant</title>
 <style>
-:root { color-scheme: light; }
-* { box-sizing: border-box; }
-html, body { margin:0; width:100%; min-height:100%; }
-body { font-family:Arial,Helvetica,sans-serif; background:#e9e9e9; color:#222; }
-.viewer { min-height:100dvh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:12px; overflow:hidden; }
-.stage { width:100%; flex:1; min-height:260px; display:flex; align-items:center; justify-content:center; position:relative; }
-#catalogo { flex:none; }
-.toolbar { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:10px; padding-bottom:4px; }
-button { background:#222; color:#fff; border:0; border-radius:7px; padding:11px 16px; cursor:pointer; font-size:14px; }
-button:disabled { opacity:.4; cursor:default; }
-#contador { min-width:95px; text-align:center; font-size:13px; }
-#mensagem { color:#a32424; font-size:14px; text-align:center; }
-.viewer:fullscreen { background:#e9e9e9; }
-@media(max-width:600px) { .viewer { padding:6px; gap:6px; } .toolbar { gap:6px; } button { padding:10px 12px; } }
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden}
+body{font-family:Arial,Helvetica,sans-serif;background:#e9e9e9;color:#222}
+.viewer{height:100dvh;width:100%;display:flex;flex-direction:column;padding:12px;gap:10px}
+.stage{flex:1;min-height:0;min-width:0;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+/* O deslocamento é aplicado ao conjunto, nunca às folhas. */
+.book-position{flex:none;position:relative;transition:transform .32s ease}
+#catalogo{display:block}
+.toolbar{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;flex:none}
+button{background:#222;color:#fff;border:0;border-radius:7px;padding:10px 15px;cursor:pointer}
+button:disabled{opacity:.4;cursor:default}#contador{font-size:13px;min-width:90px;text-align:center}
+#mensagem{text-align:center;color:#a32424;font-size:13px}.viewer:fullscreen{background:#e9e9e9}
+@media(max-width:600px){.viewer{padding:6px;gap:6px}.toolbar{gap:5px}button{padding:9px 10px}}
 </style>
 </head>
 <body>
 <main class="viewer" id="viewer">
-  <div class="stage" id="stage"><div id="catalogo"></div></div>
-  <div class="toolbar">
-    <button id="anterior" type="button">&#8592; Anterior</button>
+  <div class="stage" id="stage"><div class="book-position" id="posicao"><div id="catalogo"></div></div></div>
+  <nav class="toolbar" aria-label="Navegação do catálogo">
+    <button id="anterior" type="button">← Anterior</button>
     <span id="contador" aria-live="polite">Carregando...</span>
-    <button id="proxima" type="button">Próxima &#8594;</button>
+    <button id="proxima" type="button">Próxima →</button>
     <button id="telaCheia" type="button">Tela cheia</button>
-  </div>
+  </nav>
   <div id="mensagem" role="status"></div>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
 <script>
-(function () {
-  'use strict';
-  // Os arquivos exportados pelo InDesign usam quatro digitos.
-  // Arquivos ausentes (como 0018 e 0019) serao ignorados.
-  const TOTAL_PAGINAS_POSSIVEIS = 20;
-  const PREFIXO = 'paginas/pagina-';
-  const EXTENSAO = '.jpg';
-  const candidatos = Array.from({length: TOTAL_PAGINAS_POSSIVEIS}, (_, i) =>
-    PREFIXO + String(i + 1).padStart(4, '0') + EXTENSAO
-  );
-  let imagens = [];
-  const stage = document.getElementById('stage');
-  const catalogo = document.getElementById('catalogo');
-  const viewer = document.getElementById('viewer');
-  const contador = document.getElementById('contador');
-  const mensagem = document.getElementById('mensagem');
-  const anterior = document.getElementById('anterior');
-  const proxima = document.getElementById('proxima');
-  const telaCheia = document.getElementById('telaCheia');
-  let livro;
-  let paginaAtual = 0;
-  let layoutTimer;
-
-  function atualizarControles() {
-    if (!livro) return;
-    paginaAtual = livro.getCurrentPageIndex();
-    contador.textContent = (paginaAtual + 1) + ' / ' + imagens.length;
-    anterior.disabled = paginaAtual === 0;
-    proxima.disabled = paginaAtual >= imagens.length - 1;
-  }
-
-  function criarLivro() {
-    if (!window.St || !St.PageFlip) {
-      mensagem.textContent = 'Não foi possível carregar a biblioteca PageFlip. Verifique a conexão com a internet.';
-      return;
-    }
-    // A proporção 700x990 corresponde aproximadamente a uma página A4.
-    // O modo stretch adapta o livro ao espaço disponível.
-    livro = new St.PageFlip(catalogo, {
-      width: 700,
-      height: 990,
-      size: 'stretch',
-      minWidth: 180,
-      maxWidth: 1400,
-      minHeight: 255,
-      maxHeight: 1980,
-      showCover: true,
-      drawShadow: true,
-      maxShadowOpacity: 0.45,
-      flippingTime: 850,
-      useMouseEvents: true,
-      mobileScrollSupport: false,
-      autoSize: true,
-      startPage: 0
-    });
-    livro.on('flip', atualizarControles);
-    livro.on('init', atualizarControles);
-    livro.on('changeState', function () { window.requestAnimationFrame(centralizar); });
-    livro.on('changeOrientation', function () { window.requestAnimationFrame(centralizar); });
-    livro.loadFromImages(imagens);
-    atualizarControles();
-    ajustarTamanho();
-  }
-
-  function ajustarTamanho() {
-    if (!livro) return;
-    const areaW = Math.max(360, stage.clientWidth - 4);
-    const areaH = Math.max(260, stage.clientHeight - 4);
-    // A biblioteca usa a largura de UMA página, e o livro aberto usa duas.
-    // Reservar a largura de duas páginas impede corte ao abrir.
-    const pageW = Math.max(180, Math.min(areaW / 2, areaH * 700 / 990));
-    const pageH = pageW * 990 / 700;
-    livro.update({width: pageW, height: pageH});
-    window.requestAnimationFrame(centralizar);
-  }
-
-  function centralizar() {
-    // A biblioteca gerencia internamente a posição de capa e páginas.
-    // Não deslocamos o canvas: isso evita cortes e páginas extras.
-    if (!livro) return;
-    atualizarControles();
-  }
-
-  anterior.addEventListener('click', function () { if (livro) livro.flipPrev(); });
-  proxima.addEventListener('click', function () { if (livro) livro.flipNext(); });
-  telaCheia.addEventListener('click', async function () {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await viewer.requestFullscreen();
-    } catch (e) { mensagem.textContent = 'Tela cheia não está disponível neste navegador.'; }
-  });
-  document.addEventListener('fullscreenchange', function () {
-    telaCheia.textContent = document.fullscreenElement ? 'Sair da tela cheia' : 'Tela cheia';
-    clearTimeout(layoutTimer);
-    layoutTimer = setTimeout(ajustarTamanho, 150);
-  });
-  window.addEventListener('resize', function () {
-    clearTimeout(layoutTimer);
-    layoutTimer = setTimeout(ajustarTamanho, 150);
-  });
-  function imagemExiste(url) {
-    return new Promise(function(resolve) {
-      const img = new Image();
-      img.onload = function() { resolve(true); };
-      img.onerror = function() { resolve(false); };
-      img.src = url;
-    });
-  }
-
-  Promise.all(candidatos.map(imagemExiste)).then(function(resultados) {
-    imagens = candidatos.filter(function(_, i) { return resultados[i]; });
-    if (!imagens.length) {
-      mensagem.textContent = 'Nenhuma imagem encontrada. Confira a pasta paginas e os nomes pagina-0001.jpg, pagina-0002.jpg...';
-      contador.textContent = '0 páginas';
-      return;
-    }
-    criarLivro();
-  });
+(function(){
+'use strict';
+// Ajuste apenas este número se adicionar páginas no repositório.
+const ULTIMA_PAGINA = 20;
+const arquivos = Array.from({length:ULTIMA_PAGINA},(_,i)=>
+  'paginas/pagina-'+String(i+1).padStart(4,'0')+'.jpg');
+const stage=document.getElementById('stage');
+const posicao=document.getElementById('posicao');
+const catalogo=document.getElementById('catalogo');
+const viewer=document.getElementById('viewer');
+const contador=document.getElementById('contador');
+const mensagem=document.getElementById('mensagem');
+const anterior=document.getElementById('anterior');
+const proxima=document.getElementById('proxima');
+const telaCheia=document.getElementById('telaCheia');
+let imagens=[], proporcao=1.414, livro=null, larguraPagina=0, timer=null;
+function verificarImagem(src){return new Promise(resolve=>{
+ const img=new Image(); img.onload=()=>resolve({src,w:img.naturalWidth,h:img.naturalHeight});
+ img.onerror=()=>resolve(null);img.src=src;
+});}
+function atualizar(){
+ if(!livro)return;
+ const indice=livro.getCurrentPageIndex();
+ contador.textContent=(indice+1)+' / '+imagens.length;
+ anterior.disabled=indice===0;
+ proxima.disabled=indice>=imagens.length-1;
+ // Com showCover:true, a capa ocupa a metade direita do livro.
+ // Deslocamos o livro inteiro meia largura de página para a esquerda.
+ // Não inserimos uma página branca: a metade vazia é apenas o espaço do livro fechado.
+ const capaFechada=indice===0;
+ const contracapaFechada=indice===imagens.length-1 && imagens.length%2===0;
+ posicao.style.transform=(capaFechada||contracapaFechada)
+   ? 'translateX('+(-larguraPagina/2)+'px)' : 'translateX(0px)';
+}
+function montar(indiceInicial){
+ if(!window.St||!St.PageFlip){mensagem.textContent='Não foi possível carregar o PageFlip.';return;}
+ const areaW=Math.max(100,stage.clientWidth-8);
+ const areaH=Math.max(100,stage.clientHeight-8);
+ // Calcula o tamanho pela proporção REAL da primeira imagem, sem esticar.
+ // A largura disponível corresponde a duas páginas abertas.
+ larguraPagina=Math.max(1,Math.floor(Math.min(areaW/2,areaH/proporcao)));
+ const alturaPagina=Math.max(1,Math.round(larguraPagina*proporcao));
+ if(livro){livro.destroy();livro=null;}
+ catalogo.innerHTML='';
+ posicao.style.transition='none';
+ livro=new St.PageFlip(catalogo,{
+   width:larguraPagina,height:alturaPagina,size:'fixed',
+   showCover:true,drawShadow:true,maxShadowOpacity:.45,
+   flippingTime:850,useMouseEvents:true,mobileScrollSupport:false,
+   startPage:Math.min(indiceInicial,imagens.length-1)
+ });
+ livro.on('flip',atualizar);
+ livro.on('init',atualizar);
+ livro.on('changeOrientation',atualizar);
+ livro.loadFromImages(imagens);
+ atualizar();
+ requestAnimationFrame(()=>{posicao.style.transition='transform .32s ease';});
+}
+function reajustar(){if(!imagens.length)return;
+ const atual=livro?livro.getCurrentPageIndex():0;
+ montar(atual);
+}
+anterior.addEventListener('click',()=>livro&&livro.flipPrev());
+proxima.addEventListener('click',()=>livro&&livro.flipNext());
+telaCheia.addEventListener('click',async()=>{
+ try{if(document.fullscreenElement)await document.exitFullscreen();
+ else await viewer.requestFullscreen();}
+ catch(e){mensagem.textContent='Tela cheia indisponível neste navegador.';}
+});
+document.addEventListener('fullscreenchange',()=>{
+ telaCheia.textContent=document.fullscreenElement?'Sair da tela cheia':'Tela cheia';
+ clearTimeout(timer);timer=setTimeout(reajustar,250);
+});
+window.addEventListener('resize',()=>{clearTimeout(timer);timer=setTimeout(reajustar,250);});
+Promise.all(arquivos.map(verificarImagem)).then(resultados=>{
+ const existentes=resultados.filter(Boolean);
+ if(!existentes.length){mensagem.textContent='Nenhuma imagem encontrada. Verifique paginas/pagina-0001.jpg etc.';contador.textContent='0 páginas';return;}
+ imagens=existentes.map(x=>x.src);
+ proporcao=existentes[0].h/existentes[0].w;
+ if(!Number.isFinite(proporcao)||proporcao<=0)proporcao=1.414;
+ montar(0);
+}).catch(()=>{mensagem.textContent='Erro ao carregar imagens.';});
 })();
 </script>
 </body>
 </html>
-
