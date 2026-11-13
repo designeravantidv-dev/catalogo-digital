@@ -1,32 +1,139 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Catalogo Digital</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catálogo Digital</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#e8eaed;color:#222;font:15px Arial,sans-serif;min-height:100vh;display:flex;flex-direction:column}header{padding:12px 20px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1{font-size:17px;margin:0}main{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:18px 8px}#book{margin:auto}.controls{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;padding:14px;background:#fff}button{border:0;background:#252525;color:white;border-radius:7px;padding:10px 15px;cursor:pointer}button:hover{background:#444}#status{min-width:95px;text-align:center}.hint{font-size:12px;color:#666;text-align:center;padding:0 10px 12px;background:#fff}
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+html, body { margin:0; width:100%; min-height:100%; }
+body { font-family:Arial,Helvetica,sans-serif; background:#e9e9e9; color:#222; }
+.viewer { min-height:100dvh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:12px; overflow:hidden; }
+.stage { width:100%; flex:1; min-height:260px; display:flex; align-items:center; justify-content:center; position:relative; }
+#catalogo { flex:none; }
+.toolbar { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:10px; padding-bottom:4px; }
+button { background:#222; color:#fff; border:0; border-radius:7px; padding:11px 16px; cursor:pointer; font-size:14px; }
+button:disabled { opacity:.4; cursor:default; }
+#contador { min-width:95px; text-align:center; font-size:13px; }
+#mensagem { color:#a32424; font-size:14px; text-align:center; }
+.viewer:fullscreen { background:#e9e9e9; }
+@media(max-width:600px) { .viewer { padding:6px; gap:6px; } .toolbar { gap:6px; } button { padding:10px 12px; } }
 </style>
 </head>
 <body>
-<header><h1>Catalogo Digital</h1><span>Arraste o canto da pagina para virar</span></header>
-<main id="stage"><div id="book"></div></main>
-<div class="controls"><button id="prev">Anterior</button><span id="status">Pagina 1</span><button id="next">Proxima</button><button id="zoom">Ampliar</button><button id="full">Tela cheia</button></div>
-<div class="hint">No celular, deslize para navegar. Clique na pagina para ampliar.</div>
+<main class="viewer" id="viewer">
+  <div class="stage" id="stage"><div id="catalogo"></div></div>
+  <div class="toolbar">
+    <button id="anterior" type="button">&#8592; Anterior</button>
+    <span id="contador" aria-live="polite">Carregando...</span>
+    <button id="proxima" type="button">Próxima &#8594;</button>
+    <button id="telaCheia" type="button">Tela cheia</button>
+  </div>
+  <div id="mensagem" role="status"></div>
+</main>
 <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
 <script>
-(function(){
-var images=["paginas/pagina-0001.jpg","paginas/pagina-0002.jpg","paginas/pagina-0003.jpg","paginas/pagina-0004.jpg","paginas/pagina-0005.jpg","paginas/pagina-0006.jpg","paginas/pagina-0007.jpg","paginas/pagina-0008.jpg","paginas/pagina-0009.jpg","paginas/pagina-0010.jpg","paginas/pagina-0011.jpg","paginas/pagina-0012.jpg","paginas/pagina-0013.jpg","paginas/pagina-0014.jpg","paginas/pagina-0015.jpg","paginas/pagina-0016.jpg","paginas/pagina-0017.jpg","paginas/pagina-0018.jpg","paginas/pagina-0019.jpg","paginas/pagina-0020.jpg"];
-var stage=document.getElementById("stage"),book=document.getElementById("book"),status=document.getElementById("status");
-if(!window.St||!St.PageFlip){status.textContent="Erro ao carregar biblioteca";return;}
-var flip=new St.PageFlip(book,{width:420,height:260,size:"stretch",minWidth:180,maxWidth:420,minHeight:Math.round(180*260/420),maxHeight:260,showCover:true,drawShadow:true,maxShadowOpacity:0.5,flippingTime:850,useMouseEvents:true,mobileScrollSupport:false,autoSize:true});
-flip.loadFromImages(images);
-function update(){status.textContent="Pagina "+(flip.getCurrentPageIndex()+1)+" / "+images.length;}
-flip.on("flip",update);update();
-document.getElementById("prev").onclick=function(){flip.flipPrev();};
-document.getElementById("next").onclick=function(){flip.flipNext();};
-var enlarged=false;document.getElementById("zoom").onclick=function(){enlarged=!enlarged;stage.style.overflow=enlarged?"auto":"hidden";book.style.transform=enlarged?"scale(1.3)":"";book.style.transformOrigin="center center";this.textContent=enlarged?"Reduzir":"Ampliar";};
-document.getElementById("full").onclick=function(){if(!document.fullscreenElement&&document.documentElement.requestFullscreen){document.documentElement.requestFullscreen();}else if(document.exitFullscreen){document.exitFullscreen();}};
+(function () {
+  'use strict';
+  // ALTERE APENAS A QUANTIDADE E OS NOMES, SE NECESSÁRIO.
+  const TOTAL_PAGINAS = 20;
+  const PREFIXO = 'paginas/pagina-';
+  const EXTENSAO = '.jpg';
+  const imagens = Array.from({length: TOTAL_PAGINAS}, (_, i) =>
+    PREFIXO + String(i + 1).padStart(2, '0') + EXTENSAO
+  );
+
+  const stage = document.getElementById('stage');
+  const catalogo = document.getElementById('catalogo');
+  const viewer = document.getElementById('viewer');
+  const contador = document.getElementById('contador');
+  const mensagem = document.getElementById('mensagem');
+  const anterior = document.getElementById('anterior');
+  const proxima = document.getElementById('proxima');
+  const telaCheia = document.getElementById('telaCheia');
+  let livro;
+  let paginaAtual = 0;
+  let layoutTimer;
+
+  function atualizarControles() {
+    if (!livro) return;
+    paginaAtual = livro.getCurrentPageIndex();
+    contador.textContent = (paginaAtual + 1) + ' / ' + TOTAL_PAGINAS;
+    anterior.disabled = paginaAtual === 0;
+    proxima.disabled = paginaAtual >= TOTAL_PAGINAS - 1;
+  }
+
+  function criarLivro() {
+    if (!window.St || !St.PageFlip) {
+      mensagem.textContent = 'Não foi possível carregar a biblioteca PageFlip. Verifique a conexão com a internet.';
+      return;
+    }
+    // A proporção 700x990 corresponde aproximadamente a uma página A4.
+    // O modo stretch adapta o livro ao espaço disponível.
+    livro = new St.PageFlip(catalogo, {
+      width: 700,
+      height: 990,
+      size: 'stretch',
+      minWidth: 180,
+      maxWidth: 1400,
+      minHeight: 255,
+      maxHeight: 1980,
+      showCover: true,
+      drawShadow: true,
+      maxShadowOpacity: 0.45,
+      flippingTime: 850,
+      useMouseEvents: true,
+      mobileScrollSupport: false,
+      autoSize: true,
+      startPage: 0
+    });
+    livro.on('flip', atualizarControles);
+    livro.on('init', atualizarControles);
+    livro.on('changeState', function () { window.requestAnimationFrame(centralizar); });
+    livro.on('changeOrientation', function () { window.requestAnimationFrame(centralizar); });
+    livro.loadFromImages(imagens);
+    atualizarControles();
+    ajustarTamanho();
+  }
+
+  function ajustarTamanho() {
+    if (!livro) return;
+    const areaW = Math.max(360, stage.clientWidth - 4);
+    const areaH = Math.max(260, stage.clientHeight - 4);
+    // A biblioteca usa a largura de UMA página, e o livro aberto usa duas.
+    // Reservar a largura de duas páginas impede corte ao abrir.
+    const pageW = Math.max(180, Math.min(areaW / 2, areaH * 700 / 990));
+    const pageH = pageW * 990 / 700;
+    livro.update({width: pageW, height: pageH});
+    window.requestAnimationFrame(centralizar);
+  }
+
+  function centralizar() {
+    // A biblioteca gerencia internamente a posição de capa e páginas.
+    // Não deslocamos o canvas: isso evita cortes e páginas extras.
+    if (!livro) return;
+    atualizarControles();
+  }
+
+  anterior.addEventListener('click', function () { if (livro) livro.flipPrev(); });
+  proxima.addEventListener('click', function () { if (livro) livro.flipNext(); });
+  telaCheia.addEventListener('click', async function () {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await viewer.requestFullscreen();
+    } catch (e) { mensagem.textContent = 'Tela cheia não está disponível neste navegador.'; }
+  });
+  document.addEventListener('fullscreenchange', function () {
+    telaCheia.textContent = document.fullscreenElement ? 'Sair da tela cheia' : 'Tela cheia';
+    clearTimeout(layoutTimer);
+    layoutTimer = setTimeout(ajustarTamanho, 150);
+  });
+  window.addEventListener('resize', function () {
+    clearTimeout(layoutTimer);
+    layoutTimer = setTimeout(ajustarTamanho, 150);
+  });
+  criarLivro();
 })();
 </script>
 </body>
