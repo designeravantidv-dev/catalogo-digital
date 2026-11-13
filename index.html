@@ -63,7 +63,10 @@ function atualizar(){
  // Não inserimos uma página branca: a metade vazia é apenas o espaço do livro fechado.
  const capaFechada=indice===0;
  const contracapaFechada=indice===imagens.length-1 && imagens.length%2===0;
- posicao.style.transform=(capaFechada||contracapaFechada)
+ const modoRetrato=stage.clientWidth < 650;
+ // No desktop, a capa e a contracapa ocupam metade do livro fechado.
+ // Na visualização móvel de página única, não deslocamos o contêiner.
+ posicao.style.transform=(!modoRetrato && (capaFechada||contracapaFechada))
    ? 'translateX('+(-larguraPagina/2)+'px)' : 'translateX(0px)';
 }
 function montar(indiceInicial){
@@ -72,13 +75,15 @@ function montar(indiceInicial){
  const areaH=Math.max(100,stage.clientHeight-8);
  // Calcula o tamanho pela proporção REAL da primeira imagem, sem esticar.
  // A largura disponível corresponde a duas páginas abertas.
- larguraPagina=Math.max(1,Math.floor(Math.min(areaW/2,areaH/proporcao)));
+ const modoRetrato=stage.clientWidth < 650;
+ larguraPagina=Math.max(1,Math.floor(Math.min(areaW/(modoRetrato?1:2),areaH/proporcao)));
  const alturaPagina=Math.max(1,Math.round(larguraPagina*proporcao));
  if(livro){livro.destroy();livro=null;}
  catalogo.innerHTML='';
  posicao.style.transition='none';
  livro=new St.PageFlip(catalogo,{
    width:larguraPagina,height:alturaPagina,size:'fixed',
+   usePortrait:modoRetrato,
    showCover:true,drawShadow:true,maxShadowOpacity:.45,
    flippingTime:850,useMouseEvents:true,mobileScrollSupport:false,
    startPage:Math.min(indiceInicial,imagens.length-1)
