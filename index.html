@@ -2,130 +2,107 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Catálogo Digital Avant</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden}
-body{font-family:Arial,Helvetica,sans-serif;background:#e9e9e9;color:#222}
-.viewer{height:100dvh;width:100%;display:flex;flex-direction:column;padding:12px;gap:10px}
-.stage{flex:1;min-height:0;min-width:0;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
-/* O deslocamento é aplicado ao conjunto, nunca às folhas. */
-.book-position{flex:none;position:relative;transition:transform .32s ease;transform-origin:center center}
-#catalogo{display:block}
-.toolbar{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;flex:none}
-button{background:#222;color:#fff;border:0;border-radius:7px;padding:10px 15px;cursor:pointer}
-button:disabled{opacity:.4;cursor:default}#contador{font-size:13px;min-width:90px;text-align:center}
-#mensagem{text-align:center;color:#a32424;font-size:13px}.viewer:fullscreen{background:#e9e9e9}
-@media(max-width:600px){.viewer{padding:6px;gap:6px}.toolbar{gap:5px}button{padding:9px 10px}}
+:root{color-scheme:light;--bg:#e9e9e9}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;width:100%;overflow-x:hidden;background:var(--bg);font-family:Arial,sans-serif}
+body{min-height:100dvh;display:flex;flex-direction:column}
+main{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:10px}
+/* O palco sempre tem a largura do livro aberto. A máscara só aparece na capa. */
+#palco{position:relative;flex:none;overflow:visible;transition:none}
+#livro{position:absolute;left:0;top:0;transform-origin:center center;transition:transform .25s ease;}
+#livro.capa{clip-path:inset(0 0 0 50%);transform:translateX(-25%)}
+/* clip-path esconde a metade esquerda; translateX(-25%) centraliza a metade direita. */
+#livro .stf__parent{margin:0!important}
+nav{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:10px 12px 16px}
+button{border:0;background:#222;color:#fff;border-radius:7px;padding:10px 14px;cursor:pointer;font-size:14px}button:disabled{opacity:.45;cursor:default}
+#status{font-size:13px;color:#555;min-width:95px;text-align:center}
+#aviso{padding:15px;text-align:center;color:#a00}
+@media(max-width:700px){main{padding:4px}nav{gap:6px;padding:8px 4px 12px}button{padding:10px;font-size:12px}}
 </style>
 </head>
 <body>
-<main class="viewer" id="viewer">
-  <div class="stage" id="stage"><div class="book-position" id="posicao"><div id="catalogo"></div></div></div>
-  <nav class="toolbar" aria-label="Navegação do catálogo">
-    <button id="anterior" type="button">← Anterior</button>
-    <span id="contador" aria-live="polite">Carregando...</span>
-    <button id="proxima" type="button">Próxima →</button>
-    <button id="telaCheia" type="button">Tela cheia</button>
-  </nav>
-  <div id="mensagem" role="status"></div>
-</main>
+<main id="area"><div id="palco"><div id="livro"></div></div></main>
+<nav>
+<button id="anterior" type="button">&#8592; Anterior</button>
+<span id="status">Carregando...</span>
+<button id="proxima" type="button">Próxima &#8594;</button>
+<button id="telaCheia" type="button">Tela cheia</button>
+<button id="girar" type="button">Girar tela</button>
+</nav>
+<div id="aviso" hidden></div>
 <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
 <script>
-(function(){
+(async function(){
 'use strict';
-// Ajuste apenas este número se adicionar páginas no repositório.
-const ULTIMA_PAGINA = 20;
-const arquivos = Array.from({length:ULTIMA_PAGINA},(_,i)=>
-  'paginas/pagina-'+String(i+1).padStart(4,'0')+'.jpg');
-const stage=document.getElementById('stage');
-const posicao=document.getElementById('posicao');
-const catalogo=document.getElementById('catalogo');
-const viewer=document.getElementById('viewer');
-const contador=document.getElementById('contador');
-const mensagem=document.getElementById('mensagem');
-const anterior=document.getElementById('anterior');
-const proxima=document.getElementById('proxima');
-const telaCheia=document.getElementById('telaCheia');
-let imagens=[], proporcao=1.414, livro=null, larguraPagina=0, timer=null;
-function verificarImagem(src){return new Promise(resolve=>{
- const img=new Image(); img.onload=()=>resolve({src,w:img.naturalWidth,h:img.naturalHeight});
- img.onerror=()=>resolve(null);img.src=src;
-});}
-function atualizar(){
- if(!livro)return;
- const indice=livro.getCurrentPageIndex();
- contador.textContent=(indice+1)+' / '+imagens.length;
- anterior.disabled=indice===0;
- proxima.disabled=indice>=imagens.length-1;
- // Centraliza a capa pela posicao REAL do elemento visivel, nao pela
- // largura presumida do livro. Em StPageFlip a capa fica na metade direita.
- requestAnimationFrame(centralizarCapa);
+const area=document.getElementById('area'), palco=document.getElementById('palco');
+const livroEl=document.getElementById('livro'), status=document.getElementById('status');
+const aviso=document.getElementById('aviso');
+let flip=null, imagens=[], proporcao=1.414, paginaAtual=0, timer;
+const MAX_PAGINAS=200; // Limite de busca: arquivos inexistentes são ignorados
+const nome=i=>'paginas/pagina-'+String(i).padStart(4,'0')+'.jpg';
+function existe(src){return new Promise(resolve=>{const im=new Image();im.onload=()=>resolve({src,w:im.naturalWidth,h:im.naturalHeight});im.onerror=()=>resolve(null);im.src=src;});}
+// Busca os arquivos realmente existentes, sem inventar páginas vazias.
+for(let i=1;i<=MAX_PAGINAS;i+=20){
+ const lote=Array.from({length:Math.min(20,MAX_PAGINAS-i+1)},(_,k)=>existe(nome(i+k)));
+ const resultados=await Promise.all(lote); resultados.forEach(r=>{if(r)imagens.push(r)});
 }
-function centralizarCapa(){
- if(!livro)return;
- const indice=livro.getCurrentPageIndex();
- const fechado=indice===0 || (indice===imagens.length-1 && imagens.length%2===0);
- const retrato=stage.clientWidth<650;
- if(!fechado || retrato){posicao.style.transform='translateX(0px)';return;}
- // A area total do livro ocupa duas larguras. A capa esta na direita;
- // para centra-la, deslocamos metade da largura da pagina para a esquerda.
- // A largura externa e fixada em montar(), evitando medidas erradas.
- posicao.style.transform='translateX('+(-larguraPagina/2)+'px)';
+if(!imagens.length){aviso.hidden=false;aviso.textContent='Nenhuma imagem encontrada. Confira a pasta paginas e os nomes pagina-0001.jpg etc.';status.textContent='Sem páginas';return;}
+proporcao=imagens[0].h/imagens[0].w;
+if(!Number.isFinite(proporcao)||proporcao<=0)proporcao=1.414;
+// No computador: duas páginas. No celular em retrato: página única.
+// Em paisagem, usa duas páginas quando há espaço suficiente.
+function modoDuplo(){return window.innerWidth>=720 || (window.innerWidth>window.innerHeight && window.innerWidth>=600);}
+function tamanho(){
+ const w=area.clientWidth-12,h=area.clientHeight-12,duplo=modoDuplo();
+ const porLargura=w/(duplo?2:1);
+ const porAltura=h/proporcao;
+ const pw=Math.max(1,Math.floor(Math.min(porLargura,porAltura)));
+ return {pw,ph:Math.max(1,Math.round(pw*proporcao)),duplo};
 }
-function montar(indiceInicial){
- if(!window.St||!St.PageFlip){mensagem.textContent='Não foi possível carregar o PageFlip.';return;}
- const areaW=Math.max(100,stage.clientWidth-8);
- const areaH=Math.max(100,stage.clientHeight-8);
- // Calcula o tamanho pela proporção REAL da primeira imagem, sem esticar.
- // A largura disponível corresponde a duas páginas abertas.
- const modoRetrato=stage.clientWidth < 650;
- larguraPagina=Math.max(1,Math.floor(Math.min(areaW/(modoRetrato?1:2),areaH/proporcao)));
- const alturaPagina=Math.max(1,Math.round(larguraPagina*proporcao));
- if(livro){livro.destroy();livro=null;}
- catalogo.innerHTML='';
- posicao.style.width=(larguraPagina*2)+'px';
- posicao.style.height=alturaPagina+'px';
- posicao.style.transition='none';
- livro=new St.PageFlip(catalogo,{
-   width:larguraPagina,height:alturaPagina,size:'fixed',
-   usePortrait:modoRetrato,
-   showCover:true,drawShadow:true,maxShadowOpacity:.45,
-   flippingTime:850,useMouseEvents:true,mobileScrollSupport:false,
-   startPage:Math.min(indiceInicial,imagens.length-1)
+function montar(preservar){
+ const t=tamanho();
+ if(flip){try{paginaAtual=flip.getCurrentPageIndex();flip.destroy()}catch(e){};livroEl.innerHTML='';}
+ palco.style.width=(t.duplo?t.pw*2:t.pw)+'px';palco.style.height=t.ph+'px';
+ livroEl.style.width=(t.duplo?t.pw*2:t.pw)+'px';livroEl.style.height=t.ph+'px';
+ livroEl.classList.remove('capa');
+ flip=new St.PageFlip(livroEl,{
+  width:t.pw,height:t.ph,size:'fixed',showCover:true,
+  usePortrait:!t.duplo,drawShadow:true,maxShadowOpacity:.5,
+  flippingTime:850,useMouseEvents:true,mobileScrollSupport:false,
+  startPage:Math.min(preservar?paginaAtual:0,imagens.length-1)
  });
- livro.on('flip',atualizar);
- livro.on('init',atualizar);
- livro.on('changeOrientation',atualizar);
- livro.loadFromImages(imagens);
+ flip.loadFromImages(imagens.map(x=>x.src));
+ flip.on('flip',e=>{paginaAtual=e.data;atualizar()});
+ flip.on('changeState',()=>{setTimeout(atualizar,30)});
  atualizar();
- requestAnimationFrame(()=>requestAnimationFrame(centralizarCapa));
- requestAnimationFrame(()=>{posicao.style.transition='transform .32s ease';});
 }
-function reajustar(){if(!imagens.length)return;
- const atual=livro?livro.getCurrentPageIndex():0;
- montar(atual);
+function atualizar(){
+ if(!flip)return;
+ const idx=flip.getCurrentPageIndex();paginaAtual=idx;
+ const duplo=modoDuplo();
+ // Capa isolada: só no modo de duas páginas e só quando estamos na capa.
+ // O recorte não cria uma folha extra nem altera as imagens.
+ livroEl.classList.toggle('capa',duplo&&idx===0);
+ status.textContent=(idx+1)+' / '+imagens.length;
+ document.getElementById('anterior').disabled=idx===0;
+ document.getElementById('proxima').disabled=idx>=imagens.length-1;
 }
-anterior.addEventListener('click',()=>livro&&livro.flipPrev());
-proxima.addEventListener('click',()=>livro&&livro.flipNext());
-telaCheia.addEventListener('click',async()=>{
- try{if(document.fullscreenElement)await document.exitFullscreen();
- else await viewer.requestFullscreen();}
- catch(e){mensagem.textContent='Tela cheia indisponível neste navegador.';}
-});
-document.addEventListener('fullscreenchange',()=>{
- telaCheia.textContent=document.fullscreenElement?'Sair da tela cheia':'Tela cheia';
- clearTimeout(timer);timer=setTimeout(reajustar,250);
-});
-window.addEventListener('resize',()=>{clearTimeout(timer);timer=setTimeout(reajustar,250);});
-Promise.all(arquivos.map(verificarImagem)).then(resultados=>{
- const existentes=resultados.filter(Boolean);
- if(!existentes.length){mensagem.textContent='Nenhuma imagem encontrada. Verifique paginas/pagina-0001.jpg etc.';contador.textContent='0 páginas';return;}
- imagens=existentes.map(x=>x.src);
- proporcao=existentes[0].h/existentes[0].w;
- if(!Number.isFinite(proporcao)||proporcao<=0)proporcao=1.414;
- montar(0);
-}).catch(()=>{mensagem.textContent='Erro ao carregar imagens.';});
+document.getElementById('anterior').onclick=()=>flip&&flip.flipPrev();
+document.getElementById('proxima').onclick=()=>flip&&flip.flipNext();
+document.getElementById('telaCheia').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen()}catch(e){alert('Tela cheia não está disponível neste navegador.')}};
+document.getElementById('girar').onclick=async()=>{
+ try{
+  if(!document.fullscreenElement&&document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();
+  if(screen.orientation&&screen.orientation.lock)await screen.orientation.lock('landscape');
+  else throw Error('Sem suporte');
+ }catch(e){alert('Seu navegador não permite girar a tela automaticamente. Ative a rotação do celular e vire o aparelho na horizontal.');}
+};
+function reagendar(){clearTimeout(timer);timer=setTimeout(()=>montar(true),250)}
+window.addEventListener('resize',reagendar);
+document.addEventListener('fullscreenchange',reagendar);
+montar(false);
 })();
 </script>
 </body>
